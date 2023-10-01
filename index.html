@@ -41,68 +41,74 @@
   </body>
 </html>
 <script>
-  const videoElem = document.getElementById("video");
-  const logElem = document.getElementById("log");
-  const startElem = document.getElementById("start");
-  const stopElem = document.getElementById("stop");
-
-  // Options for getDisplayMedia()
-
-  const displayMediaOptions = {
-    video: {
-      displaySurface: "window",
-    },
-    audio: false,
-  };
-
-  // Set event listeners for the start and stop buttons
-  startElem.addEventListener(
-    "click",
-    (evt) => {
-      startCapture();
-    },
-    false
-  );
-
-  stopElem.addEventListener(
-    "click",
-    (evt) => {
-      stopCapture();
-    },
-    false
-  );
-
-  console.log = (msg) =>
-    (logElem.textContent = `${logElem.textContent}\n${msg}`);
-  console.error = (msg) =>
-    (logElem.textContent = `${logElem.textContent}\nError: ${msg}`);
-  async function startCapture() {
-    logElem.innerHTML = "";
-
-    try {
-      videoElem.srcObject = await navigator.mediaDevices.getDisplayMedia(
-        displayMediaOptions
-      );
-      
-      dumpOptionsInfo();
-    } catch (err) {
-      console.error(err);
+  document.addEventListener("DOMContentLoaded", function () {
+    async function createVideo() {
+      fetch("http:localhost:3000/api/video/c/createvideo", {
+        method: "GET",
+      })
+        .then((response) => {
+          return response.json();
+        })
+        .then((data) => {
+          console.log(data);
+          localStorage.setItem("session_id", data.session_id);
+          //document.cookie = `session_id=${data.session_id}`;
+          startRecording();
+        });
     }
-  }
+    async function startRecording() {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
+      });
+      recorder = new MediaRecorder(stream);
 
-  function stopCapture(evt) {
-    let tracks = videoElem.srcObject.getTracks();
+      let chunks = [];
+      recorder.ondataavailable = async (e) => {
+        chunks.push(e.data);
+        console.log(chunks);
+        const blob = new Blob(chunks, { type: chunks[0].type });
+        let formData = new FormData();
+        formData.append("fileupload", blob);
+        fetch("http:localhost:3000/api/video", {
+          method: "POST",
+          body: formData,
+          headers: {
+            session_id: localStorage.getItem("session_id"),
+          },
+        })
+          .then((response) => {
+            return response;
+          })
+          .then((data) => {
+            console.log(data);
+          });
 
-    tracks.forEach((track) => track.stop());
-    videoElem.srcObject = null;
-  }
+        chunks = [];
+        //   recorder.stop();
+      };
+      recorder.onstop = async (e) => {
+        let formData = new FormData();
+        formData.append("stop", true);
+        await fetch("http:localhost:3000/api/video/c/endvideo", {
+          method: "POST",
+          body: formData,
+          headers: {
+            session_id: localStorage.getItem("session_id"),
+          },
+        });
+      };
+      recorder.start(3000);
+    }
+    const start = document.getElementById("start");
+    const stop = document.getElementById("stop");
+    start.addEventListener("click", (e) => {
+      createVideo();
+    });
 
-  function dumpOptionsInfo() {
-    const videoTrack = videoElem.srcObject.getVideoTracks()[0];
-    console.log(videoTrack());
-    console.log("Track settings:");
-    console.log(JSON.stringify(videoTrack.getSettings(), null, 2));
-    console.log("Track constraints:");
-    console.log(JSON.stringify(videoTrack.getConstraints(), null, 2));
-  }
+    stop.addEventListener("click", () => {
+      recorder.stop();
+    });
+  });
+  //startRecording();
 </script>
